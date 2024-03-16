@@ -1,0 +1,8 @@
+html2text>=2024.2.26
+torch>=2.2.1
+langchain>=0.1.12
+langchain_text_splitters>=0.0.1
+langchain_weaviate>=0.0.1rc5
+langchain_community>=0.0.28
+weaviate-client>=4.5.3
+transformers>=4.38.2
