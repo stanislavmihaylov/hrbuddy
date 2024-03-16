@@ -1,8 +1,11 @@
+accelerate>=0.28.0
 html2text>=2024.2.26
-torch>=2.2.1
 langchain>=0.1.12
 langchain_text_splitters>=0.0.1
 langchain_weaviate>=0.0.1rc5
 langchain_community>=0.0.28
-weaviate-client>=4.5.3
+python-dotenv>=1.0.1
+sentence-transformers>=2.5.1
+torch>=2.2.1
 transformers>=4.38.2
+weaviate-client>=4.5.3
