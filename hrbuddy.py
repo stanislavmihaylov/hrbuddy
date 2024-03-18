@@ -1,6 +1,5 @@
 import gc
 import os
-import torch
 import requests
 from requests.auth import HTTPBasicAuth
 import json
@@ -9,13 +8,14 @@ from dotenv import load_dotenv, find_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_weaviate.vectorstores import WeaviateVectorStore
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.llms import HuggingFacePipeline
+from langchain_community.llms import LlamaCpp
 import weaviate
 from weaviate.auth import AuthApiKey
-from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig, pipeline, BitsAndBytesConfig
 from langchain.prompts import PromptTemplate
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.chains import LLMChain
+from huggingface_hub import hf_hub_download
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
 _ = load_dotenv(find_dotenv())
 
@@ -53,46 +53,28 @@ def init_db(docs):
 
     return client, db
 
+def init_llama_chain(retriever):
+    (repo_id, model_file_name) = ("TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
+                                  "mistral-7b-instruct-v0.2.Q5_K_M.gguf")
+   
+    model_path = hf_hub_download(repo_id=repo_id,
+                                 filename=model_file_name,
+                                 repo_type="model")
 
-def init_model():
-    model_id = "mistralai/Mistral-7B-Instruct-v0.2"
-    model_config = AutoConfig.from_pretrained(model_id)
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-    # tokenizer.pad_token = tokenizer.eos_token
-    # tokenizer.padding_side = "right"
-
-    # with GPU
-    # torch.cuda.empty_cache()
-    # bnb_config = BitsAndBytesConfig(
-    #     load_in_4bit=True,
-    #     bnb_4bit_use_double_quant=True,
-    #     bnb_4bit_quant_type="nf4",
-    #     bnb_4bit_compute_dtype=torch.bfloat16,
-    # )
-
-    # model = AutoModelForCausalLM.from_pretrained(model_id,torch_dtype=torch.bfloat16,quantization_config=bnb_config)
-
-    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.float16, device_map="auto")
-
-    text_generation_pipeline = pipeline(
-            model=model,
-            tokenizer=tokenizer,
-            task="text-generation",
-            temperature=0.2,
-            repetition_penalty=1.1,
-            return_full_text=True,
-            do_sample=True,
-            max_new_tokens=1000,
-            num_return_sequences=1,
-            eos_token_id=tokenizer.eos_token_id,
-            pad_token_id=tokenizer.eos_token_id,
+    llm = LlamaCpp(
+        model_path=model_path,
+        temperature=0,
+        max_tokens=512,
+        top_p=1,
+        n_gpu_layers=1,
+        n_batch=512,
+        n_ctx=4096,
+        stop=["[INST]"],
+        verbose=False,
+        callbacks=[StreamingStdOutCallbackHandler()]
     )
-    return model, text_generation_pipeline
-
-def init_llm_chain(text_generation_pipeline):
-    mistral_llm = HuggingFacePipeline(pipeline=text_generation_pipeline)
     prompt_template = """
-    ### [INST] Instruction: Answer the question based on the provided context. Here is context to help:
+    ### [INST] Instruction: You are a helpful human resources assistant that gives information based on the provided context. Here is context to help:
 
     {context}
 
@@ -100,41 +82,36 @@ def init_llm_chain(text_generation_pipeline):
     {question} [/INST]
     """
 
-    # Create prompt from prompt template 
     prompt = PromptTemplate(
         input_variables=["context", "question"],
         template=prompt_template,
     )
 
-    # Create llm chain 
-    return LLMChain(llm=mistral_llm, prompt=prompt)
-
+    return ( 
+        {
+            "context": retriever, 
+            "question": RunnablePassthrough()
+        }
+        | LLMChain(llm=llm, prompt=prompt)
+    )
 
 try: 
     docs = get_confluence_view_content()
     client, db = init_db(docs)
-    model, text_generation_pipeline = init_model()
-    llm_chain = init_llm_chain(text_generation_pipeline)
     retriever = db.as_retriever()
-
-    rag_chain = ( 
-    {"context": retriever, "question": RunnablePassthrough()}
-        | llm_chain
-    )
+    llm_chain = init_llama_chain(retriever)
 
     while True:
-        user_question = input("Ask me something: (type 'quit' to end conversation)")
+        user_question = input("\nAsk me something: (type 'quit' to end conversation)")
         if user_question == "quit":
             break
         else:
-            answer = rag_chain.invoke(user_question)['text']
-            print(answer)
+            for chunk in llm_chain.stream(user_question):
+                if(isinstance(chunk, str)):
+                    print(chunk, end="|", flush=True)
 
 except OSError as err:
     print("OS error:", err)
 finally: 
     client.close()
-    # torch.cuda.empty_cache()
-    del model
-    del pipeline
     gc.collect()

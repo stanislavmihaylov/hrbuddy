@@ -4,6 +4,7 @@ langchain>=0.1.12
 langchain_text_splitters>=0.0.1
 langchain_weaviate>=0.0.1rc5
 langchain_community>=0.0.28
+llama-cpp-python>=0.2.56
 python-dotenv>=1.0.1
 sentence-transformers>=2.5.1
 torch>=2.2.1
