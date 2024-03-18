@@ -58,8 +58,8 @@ def init_model():
     model_id = "mistralai/Mistral-7B-Instruct-v0.2"
     model_config = AutoConfig.from_pretrained(model_id)
     tokenizer = AutoTokenizer.from_pretrained(model_id)
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "right"
+    # tokenizer.pad_token = tokenizer.eos_token
+    # tokenizer.padding_side = "right"
 
     # with GPU
     # torch.cuda.empty_cache()
@@ -72,20 +72,20 @@ def init_model():
 
     # model = AutoModelForCausalLM.from_pretrained(model_id,torch_dtype=torch.bfloat16,quantization_config=bnb_config)
 
-    model = AutoModelForCausalLM.from_pretrained(model_id,torch_dtype=torch.bfloat16)
+    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.float16, device_map="auto")
 
     text_generation_pipeline = pipeline(
-        "text-generation",
-        model=model,
-        tokenizer=tokenizer,
-        use_cache=True,
-        device_map="auto",
-        max_length=2048,
-        do_sample=True,
-        top_k=5,
-        num_return_sequences=1,
-        eos_token_id=tokenizer.eos_token_id,
-        pad_token_id=tokenizer.eos_token_id,
+            model=model,
+            tokenizer=tokenizer,
+            task="text-generation",
+            temperature=0.2,
+            repetition_penalty=1.1,
+            return_full_text=True,
+            do_sample=True,
+            max_new_tokens=1000,
+            num_return_sequences=1,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.eos_token_id,
     )
     return model, text_generation_pipeline
 
